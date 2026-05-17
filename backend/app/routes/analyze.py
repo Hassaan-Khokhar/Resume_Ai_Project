@@ -10,7 +10,7 @@ from app.gemini_engine import analyze_with_gemini
 from app.ml_engine import compute_fallback_score
 from bson import ObjectId
 
-router = APIRouter(prefix="/api/analyze", tags=["AI Analysis"])
+router = APIRouter(prefix="/analyze", tags=["AI Analysis"])
 
 
 @router.post("/")

@@ -8,7 +8,7 @@ from app.auth import get_current_user
 from app.models import CreatePostRequest, CommentRequest
 from app.database import posts_col, comments_col, users_col, pipeline_user_feed, pipeline_feed_jobs, activity_logs_col
 
-router = APIRouter(prefix="/api/posts", tags=["Posts"])
+router = APIRouter(prefix="/posts", tags=["Posts"])
 
 
 class UpdatePostRequest(BaseModel):

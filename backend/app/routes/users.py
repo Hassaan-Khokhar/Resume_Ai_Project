@@ -9,7 +9,7 @@ from app.database import (users_col, posts_col, resumes_col, match_reports_col,
                           pipeline_trending_skills, pipeline_top_missing_skills,
                           pipeline_platform_stats, job_postings_col)
 
-router = APIRouter(prefix="/api/users", tags=["Users"])
+router = APIRouter(prefix="/users", tags=["Users"])
 
 
 # ─── Profile ────────────────────────────────────

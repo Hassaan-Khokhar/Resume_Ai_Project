@@ -5,7 +5,7 @@ from app.models import RegisterRequest, LoginRequest, TokenResponse
 from app.auth import hash_password, verify_password, create_access_token
 from app.database import users_col, activity_logs_col
 
-router = APIRouter(prefix="/api/auth", tags=["Auth"])
+router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
 @router.post("/register", response_model=TokenResponse)

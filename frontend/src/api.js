@@ -1,4 +1,4 @@
-const API = 'https://resume-ai-backend-6c03.onrender.com/api';
+const API = 'https://resume-ai-backend-6c03.onrender.com';
 
 function getHeaders() {
   const token = localStorage.getItem('token');

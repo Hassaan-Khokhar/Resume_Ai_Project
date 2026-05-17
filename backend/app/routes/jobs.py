@@ -16,7 +16,7 @@ from app.pdf_parser import extract_text_from_pdf, extract_skills_from_text, esti
 from app.gemini_engine import analyze_with_gemini
 from app.ml_engine import compute_fallback_score
 
-router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
+router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 
 @router.get("/")
