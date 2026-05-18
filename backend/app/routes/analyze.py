@@ -106,32 +106,44 @@ async def get_history(user_id: str = Depends(get_current_user), limit: int = 20)
 
 @router.get("/debug")
 async def debug_gemini():
-    """Diagnostic endpoint to check Gemini API key and connectivity."""
+    """Diagnostic endpoint to check Gemini API key and test ALL models."""
     import os
     raw_env = os.getenv("GEMINI_API_KEY", "")
     cleaned = settings.GEMINI_API_KEY
 
     info = {
-        "raw_env_length": len(raw_env),
-        "raw_env_first_10": raw_env[:10] + "..." if len(raw_env) > 10 else raw_env,
-        "raw_env_has_quotes": raw_env.startswith('"') or raw_env.startswith("'"),
-        "cleaned_length": len(cleaned),
-        "cleaned_first_10": cleaned[:10] + "..." if len(cleaned) > 10 else cleaned,
-        "model": settings.GEMINI_MODEL,
+        "key_length": len(cleaned),
+        "key_preview": cleaned[:10] + "..." if len(cleaned) > 10 else cleaned,
+        "has_quotes": raw_env.startswith('"') or raw_env.startswith("'"),
+        "configured_model": settings.GEMINI_MODEL,
+        "model_tests": {},
     }
 
-    # Try a simple Gemini call
-    try:
-        from google import genai
-        client = genai.Client(api_key=cleaned)
-        response = client.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents="Say hello in one word.",
-        )
-        info["gemini_test"] = "SUCCESS"
-        info["gemini_response"] = response.text[:100]
-    except Exception as e:
-        info["gemini_test"] = "FAILED"
-        info["gemini_error"] = f"{type(e).__name__}: {str(e)}"
+    models_to_test = [
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
+    ]
+
+    from google import genai
+    client = genai.Client(api_key=cleaned)
+
+    for model in models_to_test:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents="Say hi",
+            )
+            info["model_tests"][model] = {"status": "SUCCESS", "response": response.text[:50]}
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str:
+                info["model_tests"][model] = {"status": "RATE_LIMITED"}
+            elif "404" in err_str:
+                info["model_tests"][model] = {"status": "NOT_FOUND"}
+            else:
+                info["model_tests"][model] = {"status": "ERROR", "error": err_str[:200]}
 
     return info
