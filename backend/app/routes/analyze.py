@@ -118,7 +118,8 @@ async def debug_gemini():
     }
 
     # Test 1: Raw REST API (no SDK)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cleaned}"
+    clean_key = cleaned.replace("\n", "").replace("\r", "").replace(" ", "")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={clean_key}"
     payload = {"contents": [{"parts": [{"text": "Say hi"}]}]}
     
     try:
