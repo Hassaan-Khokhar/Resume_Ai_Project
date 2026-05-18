@@ -2,17 +2,15 @@
 Module D: Intelligence Engine — Gemini LLM Integration
 Performs high-level reasoning on resume text against job descriptions.
 Uses prompt engineering with constrained JSON output.
-Uses generate_content_async() for non-blocking execution inside FastAPI/uvicorn.
+Migrated to the new google-genai SDK (the old google-generativeai is deprecated).
 """
 
 import json
 import time
 import traceback
-import google.generativeai as genai
+import asyncio
+from google import genai
 from app.config import settings
-
-# Configure the Gemini SDK (will be done inside the call to ensure latest settings are used)
-# genai.configure(api_key=settings.GEMINI_API_KEY)
 
 
 ANALYSIS_PROMPT = """You are an expert Senior Technical Recruiter and ATS (Applicant Tracking System) specialist with 15+ years of experience.
@@ -69,8 +67,7 @@ ANALYSIS_PROMPT = """You are an expert Senior Technical Recruiter and ATS (Appli
 async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
     """
     Send resume text and job description to Gemini for analysis.
-    Uses generate_content_async() for proper non-blocking execution
-    inside FastAPI's async event loop (uvicorn).
+    Uses the new google-genai SDK with asyncio.to_thread for non-blocking execution.
 
     Args:
         resume_text: Cleaned text extracted from the PDF resume.
@@ -88,23 +85,19 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
         job_description=job_description
     )
 
-    # Run the synchronous Gemini SDK call in a separate thread
-    # to avoid conflicts with uvicorn's event loop and Motor (async MongoDB).
-    # generate_content_async has known issues with some ASGI servers.
-    import asyncio
-
     def _call_gemini():
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not set or empty in environment variables.")
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel(settings.GEMINI_MODEL)
-        return model.generate_content(
-            prompt,
-            generation_config=genai.GenerationConfig(
-                temperature=0.2,
-                response_mime_type="application/json",
-            )
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config={
+                "temperature": 0.2,
+                "response_mime_type": "application/json",
+            }
         )
+        return response
 
     start_time = time.time()
     api_key_len = len(settings.GEMINI_API_KEY)
@@ -120,7 +113,6 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
 
     # Clean potential markdown code fences
     if response_text.startswith("```"):
-        # Remove ```json and trailing ```
         response_text = response_text.split("\n", 1)[-1]
         if response_text.endswith("```"):
             response_text = response_text[:-3]
@@ -131,7 +123,6 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
         result = json.loads(response_text)
     except json.JSONDecodeError as e:
         print(f"[GEMINI WARNING] Truncated JSON detected. Attempting regex recovery...")
-        # Recover what we can from the truncated string
         import re
         result = {}
         
@@ -147,11 +138,9 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
         kw_score_match = re.search(r'"keyword_score"\s*:\s*(\d+(?:\.\d+)?)', response_text)
         if kw_score_match: result["keyword_score"] = float(kw_score_match.group(1))
         
-        # If we couldn't even recover the basic scores, THEN we fail
         if "match_score" not in result:
             raise ValueError(f"Gemini returned unparseable truncated JSON: {str(e)}")
             
-        # Fill in safe defaults for arrays if they didn't parse
         result["matched_skills"] = []
         result["missing_skills"] = []
         result["strengths"] = ["Strong alignment detected (partial AI response)"]
@@ -175,4 +164,3 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
     }
 
     return result
-
