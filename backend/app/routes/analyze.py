@@ -106,44 +106,40 @@ async def get_history(user_id: str = Depends(get_current_user), limit: int = 20)
 
 @router.get("/debug")
 async def debug_gemini():
-    """Diagnostic endpoint to check Gemini API key and test ALL models."""
-    import os
-    raw_env = os.getenv("GEMINI_API_KEY", "")
+    """Diagnostic: test Gemini API key with a single call + retry."""
+    import os, asyncio
     cleaned = settings.GEMINI_API_KEY
 
     info = {
         "key_length": len(cleaned),
         "key_preview": cleaned[:10] + "..." if len(cleaned) > 10 else cleaned,
-        "has_quotes": raw_env.startswith('"') or raw_env.startswith("'"),
-        "configured_model": settings.GEMINI_MODEL,
-        "model_tests": {},
+        "model": settings.GEMINI_MODEL,
     }
-
-    models_to_test = [
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
-        "gemini-1.5-pro",
-    ]
 
     from google import genai
     client = genai.Client(api_key=cleaned)
 
-    for model in models_to_test:
+    # Try once, if rate limited wait and retry once
+    for attempt in range(2):
         try:
             response = client.models.generate_content(
-                model=model,
-                contents="Say hi",
+                model=settings.GEMINI_MODEL,
+                contents="Say hello in one word.",
             )
-            info["model_tests"][model] = {"status": "SUCCESS", "response": response.text[:50]}
+            info["test"] = "SUCCESS"
+            info["response"] = response.text[:100]
+            info["attempt"] = attempt + 1
+            break
         except Exception as e:
             err_str = str(e)
-            if "429" in err_str:
-                info["model_tests"][model] = {"status": "RATE_LIMITED"}
-            elif "404" in err_str:
-                info["model_tests"][model] = {"status": "NOT_FOUND"}
+            info["test"] = "FAILED"
+            info["error"] = err_str[:300]
+            info["attempt"] = attempt + 1
+            if "429" in err_str and attempt == 0:
+                info["action"] = "Waiting 60s and retrying..."
+                await asyncio.sleep(60)
             else:
-                info["model_tests"][model] = {"status": "ERROR", "error": err_str[:200]}
+                break
 
     return info
+

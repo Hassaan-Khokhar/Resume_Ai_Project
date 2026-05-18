@@ -85,40 +85,49 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
         job_description=job_description
     )
 
-    # Try multiple models in case one is rate-limited
+    # Models to try (only 2.0 models work with the new SDK)
     MODELS_TO_TRY = [
         settings.GEMINI_MODEL,
         "gemini-2.0-flash-lite",
-        "gemini-1.5-flash",
     ]
 
     def _call_gemini():
+        import re as _re
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not set or empty in environment variables.")
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
         
-        last_error = None
         for model_name in MODELS_TO_TRY:
-            try:
-                print(f"[GEMINI] Trying model: {model_name}")
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config={
-                        "temperature": 0.2,
-                        "response_mime_type": "application/json",
-                    }
-                )
-                return response, model_name
-            except Exception as e:
-                last_error = e
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    print(f"[GEMINI] Rate limited on {model_name}, trying next...")
-                    continue
-                else:
-                    raise  # Non-rate-limit errors should fail immediately
+            # Try each model with up to 2 retries (with delay if rate-limited)
+            for attempt in range(3):
+                try:
+                    print(f"[GEMINI] Trying {model_name} (attempt {attempt + 1}/3)")
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=prompt,
+                        config={
+                            "temperature": 0.2,
+                            "response_mime_type": "application/json",
+                        }
+                    )
+                    return response, model_name
+                except Exception as e:
+                    err_str = str(e)
+                    if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        # Extract retry delay from error message
+                        delay_match = _re.search(r'retryDelay.*?(\d+)', err_str)
+                        wait_secs = int(delay_match.group(1)) if delay_match else 30
+                        wait_secs = min(wait_secs + 5, 65)  # Add buffer, cap at 65s
+                        
+                        if attempt < 2:  # Don't wait on last attempt
+                            print(f"[GEMINI] Rate limited on {model_name}, waiting {wait_secs}s before retry...")
+                            time.sleep(wait_secs)
+                        else:
+                            print(f"[GEMINI] Rate limited on {model_name} after 3 attempts, trying next model...")
+                    else:
+                        raise  # Non-rate-limit errors fail immediately
         
-        raise last_error  # All models exhausted
+        raise Exception("All Gemini models exhausted after retries. Free tier quota may be unavailable.")
 
     start_time = time.time()
     api_key_len = len(settings.GEMINI_API_KEY)
