@@ -85,28 +85,49 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
         job_description=job_description
     )
 
+    # Try multiple models in case one is rate-limited
+    MODELS_TO_TRY = [
+        settings.GEMINI_MODEL,
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash",
+    ]
+
     def _call_gemini():
         if not settings.GEMINI_API_KEY:
             raise ValueError("GEMINI_API_KEY is not set or empty in environment variables.")
         client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
-            config={
-                "temperature": 0.2,
-                "response_mime_type": "application/json",
-            }
-        )
-        return response
+        
+        last_error = None
+        for model_name in MODELS_TO_TRY:
+            try:
+                print(f"[GEMINI] Trying model: {model_name}")
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config={
+                        "temperature": 0.2,
+                        "response_mime_type": "application/json",
+                    }
+                )
+                return response, model_name
+            except Exception as e:
+                last_error = e
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    print(f"[GEMINI] Rate limited on {model_name}, trying next...")
+                    continue
+                else:
+                    raise  # Non-rate-limit errors should fail immediately
+        
+        raise last_error  # All models exhausted
 
     start_time = time.time()
     api_key_len = len(settings.GEMINI_API_KEY)
-    print(f"[GEMINI] Calling API (model: {settings.GEMINI_MODEL}, key_len: {api_key_len})...")
+    print(f"[GEMINI] Calling API (key_len: {api_key_len})...")
 
-    response = await asyncio.to_thread(_call_gemini)
+    response, used_model = await asyncio.to_thread(_call_gemini)
 
     latency_ms = (time.time() - start_time) * 1000
-    print(f"[GEMINI] Responded in {latency_ms:.0f}ms")
+    print(f"[GEMINI] Responded in {latency_ms:.0f}ms (model: {used_model})")
 
     # Extract the text response
     response_text = response.text.strip()
@@ -160,7 +181,7 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
     # Attach metadata
     result["_meta"] = {
         "latency_ms": round(latency_ms, 2),
-        "model": settings.GEMINI_MODEL,
+        "model": used_model,
     }
 
     return result
