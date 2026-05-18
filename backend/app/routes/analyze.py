@@ -106,40 +106,40 @@ async def get_history(user_id: str = Depends(get_current_user), limit: int = 20)
 
 @router.get("/debug")
 async def debug_gemini():
-    """Diagnostic: test Gemini API key with a single call + retry."""
-    import os, asyncio
+    """Test Gemini via raw REST API (bypasses SDK completely)."""
+    import httpx
     cleaned = settings.GEMINI_API_KEY
+    model = settings.GEMINI_MODEL
 
     info = {
         "key_length": len(cleaned),
         "key_preview": cleaned[:10] + "..." if len(cleaned) > 10 else cleaned,
-        "model": settings.GEMINI_MODEL,
+        "model": model,
     }
 
-    from google import genai
-    client = genai.Client(api_key=cleaned)
-
-    # Try once, if rate limited wait and retry once
-    for attempt in range(2):
-        try:
-            response = client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents="Say hello in one word.",
-            )
-            info["test"] = "SUCCESS"
-            info["response"] = response.text[:100]
-            info["attempt"] = attempt + 1
-            break
-        except Exception as e:
-            err_str = str(e)
-            info["test"] = "FAILED"
-            info["error"] = err_str[:300]
-            info["attempt"] = attempt + 1
-            if "429" in err_str and attempt == 0:
-                info["action"] = "Waiting 60s and retrying..."
-                await asyncio.sleep(60)
+    # Test 1: Raw REST API (no SDK)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cleaned}"
+    payload = {"contents": [{"parts": [{"text": "Say hi"}]}]}
+    
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                text = data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                info["rest_api"] = {"status": "SUCCESS", "response": text[:100]}
             else:
-                break
+                info["rest_api"] = {"status": f"FAILED_{resp.status_code}", "body": resp.text[:300]}
+    except Exception as e:
+        info["rest_api"] = {"status": "ERROR", "error": str(e)[:200]}
+
+    # Test 2: SDK
+    try:
+        from google import genai
+        sdk_client = genai.Client(api_key=cleaned)
+        response = sdk_client.models.generate_content(model=model, contents="Say hi")
+        info["sdk"] = {"status": "SUCCESS", "response": response.text[:100]}
+    except Exception as e:
+        info["sdk"] = {"status": "FAILED", "error": str(e)[:300]}
 
     return info
-
