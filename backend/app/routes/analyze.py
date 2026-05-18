@@ -48,14 +48,18 @@ async def analyze_resume(
     }
     await resumes_col().insert_one(resume_doc)
 
+
     # Step 3: AI Analysis (Gemini with ML fallback)
+    gemini_error = None
     try:
         result = await analyze_with_gemini(resume_text, job_description)
     except Exception as e:
         import traceback
-        print(f"[FALLBACK] Gemini failed, using ML fallback: {type(e).__name__}: {e}")
+        gemini_error = f"{type(e).__name__}: {e}"
+        print(f"[FALLBACK] Gemini failed, using ML fallback: {gemini_error}")
         traceback.print_exc()
         result = compute_fallback_score(resume_text, job_description)
+        result["_gemini_error"] = gemini_error
 
     # Step 4: Save match report
     report_doc = {
@@ -98,3 +102,36 @@ async def get_history(user_id: str = Depends(get_current_user), limit: int = 20)
     for r in reports:
         r["_id"] = str(r["_id"])
     return {"success": True, "data": reports}
+
+
+@router.get("/debug")
+async def debug_gemini():
+    """Diagnostic endpoint to check Gemini API key and connectivity."""
+    import os
+    raw_env = os.getenv("GEMINI_API_KEY", "")
+    cleaned = settings.GEMINI_API_KEY
+
+    info = {
+        "raw_env_length": len(raw_env),
+        "raw_env_first_10": raw_env[:10] + "..." if len(raw_env) > 10 else raw_env,
+        "raw_env_has_quotes": raw_env.startswith('"') or raw_env.startswith("'"),
+        "cleaned_length": len(cleaned),
+        "cleaned_first_10": cleaned[:10] + "..." if len(cleaned) > 10 else cleaned,
+        "model": settings.GEMINI_MODEL,
+    }
+
+    # Try a simple Gemini call
+    try:
+        from google import genai
+        client = genai.Client(api_key=cleaned)
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents="Say hello in one word.",
+        )
+        info["gemini_test"] = "SUCCESS"
+        info["gemini_response"] = response.text[:100]
+    except Exception as e:
+        info["gemini_test"] = "FAILED"
+        info["gemini_error"] = f"{type(e).__name__}: {str(e)}"
+
+    return info
