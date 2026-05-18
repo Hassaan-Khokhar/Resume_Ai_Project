@@ -57,7 +57,7 @@ export const jobsAPI = {
 
 // AI Analysis
 export const analyzeAPI = {
-  analyze: (formData) => fetch(`${API}/analyze/`, { method: 'POST', headers: getHeaders(), body: formData }).then(r => r.json()),
+  analyze: (formData) => fetch(`${API}/analyze/`, { method: 'POST', headers: getHeaders(), body: formData }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Analysis failed'); return d; }),
   history: () => request('/analyze/history'),
 };
 

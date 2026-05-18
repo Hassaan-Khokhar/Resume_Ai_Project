@@ -8,7 +8,7 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip("\"'")
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017").strip("\"'")
     DATABASE_NAME: str = os.getenv("DATABASE_NAME", "resume_analyzer").strip("\"'")
-    GEMINI_MODEL: str = "gemini-flash-latest"
+    GEMINI_MODEL: str = "gemini-1.5-flash"
     SECRET_KEY: str = os.getenv("SECRET_KEY", "super-secret-key-change-in-production-123!")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
