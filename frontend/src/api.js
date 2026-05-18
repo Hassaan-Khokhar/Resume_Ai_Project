@@ -57,7 +57,26 @@ export const jobsAPI = {
 
 // AI Analysis
 export const analyzeAPI = {
-  analyze: (formData) => fetch(`${API}/analyze/`, { method: 'POST', headers: getHeaders(), body: formData }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Analysis failed'); return d; }),
+  analyze: async (formData) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+    try {
+      const res = await fetch(`${API}/analyze/`, {
+        method: 'POST', headers: getHeaders(), body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: `Server error ${res.status}` }));
+        throw new Error(err.detail || 'Analysis failed');
+      }
+      return await res.json();
+    } catch (e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Analysis timed out. The server may be waking up — please try again.');
+      throw e;
+    }
+  },
   history: () => request('/analyze/history'),
 };
 
