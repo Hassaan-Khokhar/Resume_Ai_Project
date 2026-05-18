@@ -11,8 +11,8 @@ import traceback
 import google.generativeai as genai
 from app.config import settings
 
-# Configure the Gemini SDK
-genai.configure(api_key=settings.GEMINI_API_KEY)
+# Configure the Gemini SDK (will be done inside the call to ensure latest settings are used)
+# genai.configure(api_key=settings.GEMINI_API_KEY)
 
 
 ANALYSIS_PROMPT = """You are an expert Senior Technical Recruiter and ATS (Applicant Tracking System) specialist with 15+ years of experience.
@@ -94,6 +94,9 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
     import asyncio
 
     def _call_gemini():
+        if not settings.GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY is not set or empty in environment variables.")
+        genai.configure(api_key=settings.GEMINI_API_KEY)
         model = genai.GenerativeModel(settings.GEMINI_MODEL)
         return model.generate_content(
             prompt,
@@ -104,7 +107,8 @@ async def analyze_with_gemini(resume_text: str, job_description: str) -> dict:
         )
 
     start_time = time.time()
-    print(f"[GEMINI] Calling API (model: {settings.GEMINI_MODEL})...")
+    api_key_len = len(settings.GEMINI_API_KEY)
+    print(f"[GEMINI] Calling API (model: {settings.GEMINI_MODEL}, key_len: {api_key_len})...")
 
     response = await asyncio.to_thread(_call_gemini)
 
